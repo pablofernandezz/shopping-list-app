@@ -1,0 +1,311 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Text, 
+  View, 
+  TextInput, 
+  TouchableOpacity, 
+  FlatList, 
+  KeyboardAvoidingView, 
+  Platform,
+  Alert,
+  RefreshControl
+} from 'react-native';
+import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler'; 
+import { styles } from './styles';
+import { DICCIONARIO_EMOJIS, obtenerIcono } from './diccionario'; 
+
+// --- CONFIGURACION DE RED ---
+// para local, uso mi IP
+const API_URL = 'http://192.168.1.44:3000';
+
+// --- INTERFAZ ---
+interface Articulo {
+  _id?: string; // MongoDB usa _id automáticamente
+  nombre: string;
+  cantidad: number;
+  comentario: string;
+  comprado?: boolean;
+}
+
+export default function App() {
+  const [nombre, setNombre] = useState('');
+  const [sugerencias, setSugerencias] = useState<string[]>([]); 
+  const [cantidad, setCantidad] = useState<number>(1);
+  const [comentario, setComentario] = useState('');
+  const [lista, setLista] = useState<Articulo[]>([]); 
+  
+  // Guardar el articulo completo que se esta editando para tener su nombre original
+  const [editandoArticulo, setEditandoArticulo] = useState<Articulo | null>(null);
+  const [refrescando, setRefrescando] = useState(false);
+
+
+  // --- LOGICA DE RED (CONEXION AL BACKEND) ---
+
+  // 1 cargar datos al iniciar la app
+  useEffect(() => {
+    recargarDatos();
+  }, []);
+
+  // Función GET: Obtener todos los artículos
+  const recargarDatos = async () => {
+    setRefrescando(true); 
+    try {
+      const respuesta = await fetch(`${API_URL}/articulos`);
+      const datosBBDD = await respuesta.json();
+      setLista(datosBBDD); // Sustituimos el estado por lo que manda MongoDB
+    } catch (error) {
+      Alert.alert("Error de conexión", "Asegúrate de que el servidor Node.js está encendido y conectado a la misma Wi-Fi.");
+    } finally {
+      setRefrescando(false);
+    }
+  };
+
+  // Funciones POST y PUT: Añadir o Editar
+  const agregarOActualizarArticulo = async () => {
+    if (nombre.trim() === '') return; 
+
+    try {
+      if (editandoArticulo) {
+        // PUT: Actualizar
+        const respuesta = await fetch(`${API_URL}/articulos/${editandoArticulo.nombre}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nombre, cantidad, comentario })
+        });
+        
+        if (respuesta.ok) {
+          recargarDatos(); // refrescar la lista para ver los cambios
+          setEditandoArticulo(null); 
+        }
+      } else {
+        // POST: Añadir nuevo
+        const respuesta = await fetch(`${API_URL}/articulos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nombre, cantidad, comentario })
+        });
+
+        if (respuesta.ok) {
+          recargarDatos();
+        }
+      }
+
+      // Limpiar los inputs
+      setNombre('');
+      setCantidad(1);
+      setComentario('');
+      setSugerencias([]); 
+    } catch (error) {
+      Alert.alert("Error", "Hubo un problema al guardar el artículo en la base de datos.");
+    }
+  };
+
+  // Función DELETE: Borrar un artículo
+  const confirmarEliminacion = (articulo: Articulo) => {
+    Alert.alert(
+      "Eliminar artículo", 
+      `¿Seguro que quieres eliminar ${articulo.nombre} de la lista?`, 
+      [
+        { text: "Cancelar", style: "cancel" }, 
+        { 
+          text: "Eliminar", 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              //  la petición DELETE se hace a la ruta del backend
+              const respuesta = await fetch(`${API_URL}/articulos/${articulo.nombre}`, {
+                method: 'DELETE'
+              });
+              if (respuesta.ok) recargarDatos();
+            } catch (error) {
+              Alert.alert("Error", "No se pudo conectar con el servidor para borrar.");
+            }
+          } 
+        }
+      ]
+    );
+  };
+
+  // Función para vaciar toda la lista iterando
+  const vaciarLista = async () => {
+    Alert.alert(
+      "Vaciar Lista",
+      "¿Seguro que has comprado todo y quieres limpiar la base de datos?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Vaciar",
+          style: "destructive",
+          onPress: async () => {
+            setRefrescando(true);
+            try {
+              // el backend actual requiere borrar por nombre uno a uno
+              for (const item of lista) {
+                await fetch(`${API_URL}/articulos/${item.nombre}`, { method: 'DELETE' });
+              }
+              recargarDatos();
+            } catch (error) {
+              Alert.alert("Error", "Falló el vaciado de la base de datos.");
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // --- LÓGICA DE AUTOCOMPLETADO Y UI ---
+  const manejarTextoNombre = (texto: string) => {
+    setNombre(texto);
+    const t = texto.toLowerCase().trim();
+
+    if (t.length > 0) {
+      const coincidencias = Object.keys(DICCIONARIO_EMOJIS).filter(palabra =>
+        palabra.startsWith(t)
+      );
+      setSugerencias(coincidencias.slice(0, 3));
+    } else {
+      setSugerencias([]);
+    }
+  };
+
+  const seleccionarSugerencia = (palabra: string) => {
+    const palabraFormateada = palabra.charAt(0).toUpperCase() + palabra.slice(1);
+    setNombre(palabraFormateada);
+    setSugerencias([]); 
+  };
+
+  const iniciarEdicion = (articulo: Articulo) => {
+    setNombre(articulo.nombre);
+    setCantidad(articulo.cantidad);
+    setComentario(articulo.comentario || '');
+    setEditandoArticulo(articulo);
+  };
+
+  const incrementarCantidad = () => setCantidad(cantidad + 1);
+  const decrementarCantidad = () => {
+    if (cantidad > 1) setCantidad(cantidad - 1); 
+  };
+
+  const renderFondoRojoSwipe = () => (
+    <View style={styles.fondoRojoSwipe}>
+      <Text style={styles.textoBotonSwipe}>Soltar para borrar</Text>
+    </View>
+  );
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <KeyboardAvoidingView 
+        style={styles.container} 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <Text style={styles.titulo}>Lista de la Compra</Text>
+
+        <View style={styles.formulario}>
+          <View style={{ zIndex: 2 }}> 
+            <TextInput
+              style={styles.inputPrincipal}
+              placeholder="¿Qué necesitas? (Ej. Manzanas)"
+              placeholderTextColor="#6B7280" 
+              value={nombre}
+              onChangeText={manejarTextoNombre} 
+            />
+            
+            {sugerencias.length > 0 && (
+              <View style={styles.cajaSugerencias}>
+                {sugerencias.map((sug) => (
+                  <TouchableOpacity 
+                    key={sug} 
+                    style={styles.itemSugerencia}
+                    onPress={() => seleccionarSugerencia(sug)}
+                  >
+                    <Text style={styles.textoSugerencia}>
+                      {DICCIONARIO_EMOJIS[sug]} {sug.charAt(0).toUpperCase() + sug.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+          
+          <View style={[styles.filaInputs, { zIndex: 1 }]}>
+            <View style={styles.stepperContainer}>
+              <TouchableOpacity onPress={decrementarCantidad} style={styles.stepperBoton}>
+                <Text style={styles.stepperTextoBoton}>-</Text>
+              </TouchableOpacity>
+              <Text style={styles.stepperValor}>{cantidad}</Text>
+              <TouchableOpacity onPress={incrementarCantidad} style={styles.stepperBoton}>
+                <Text style={styles.stepperTextoBoton}>+</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              style={styles.inputComentario}
+              placeholder="Comentario (opcional)..."
+              placeholderTextColor="#6B7280" 
+              value={comentario}
+              onChangeText={setComentario}
+            />
+          </View>
+
+          <TouchableOpacity 
+            style={[styles.botonAnadir, editandoArticulo && styles.botonGuardarEdicion]} 
+            onPress={agregarOActualizarArticulo}
+          >
+            <Text style={styles.textoBotonAnadir}>
+              {editandoArticulo ? 'Guardar cambios' : 'Añadir a la lista'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <FlatList
+          style={styles.lista}
+          contentContainerStyle={{ flexGrow: 1 }} 
+          data={lista} 
+          keyExtractor={(item) => item._id || item.nombre} // Usamos el _id de Mongo
+          refreshControl={
+            <RefreshControl 
+              refreshing={refrescando} 
+              onRefresh={recargarDatos} 
+              colors={['#3B82F6']} 
+              tintColor="#3B82F6" 
+            />
+          }
+          renderItem={({ item }) => (
+            <Swipeable 
+              renderRightActions={renderFondoRojoSwipe}
+              onSwipeableOpen={(direction) => {
+                if (direction === 'right') confirmarEliminacion(item);
+              }}
+            >
+              <View style={styles.tarjetaArticulo}>
+                <View style={styles.infoArticulo}>
+                  <Text style={styles.nombreArticulo}>
+                    {obtenerIcono(item.nombre)} {item.nombre} (x{item.cantidad})
+                  </Text>
+                  {item.comentario !== '' && item.comentario !== undefined && (
+                    <Text style={styles.comentarioArticulo}>{item.comentario}</Text>
+                  )}
+                </View>
+
+                <View style={styles.accionesArticulo}>
+                  <TouchableOpacity onPress={() => iniciarEdicion(item)} style={styles.botonAccion}>
+                    <Text style={styles.textoEditar}>✏️</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => confirmarEliminacion(item)} style={styles.botonAccion}>
+                    <Text style={styles.textoEliminar}>❌</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </Swipeable>
+          )}
+        />
+
+        {lista.length > 0 && (
+          <TouchableOpacity style={styles.botonVaciar} onPress={vaciarLista}>
+            <Text style={styles.textoBotonVaciar}>Compra Hecha (Vaciar lista)</Text>
+          </TouchableOpacity>
+        )}
+      </KeyboardAvoidingView>
+    </GestureHandlerRootView>
+  );
+}
