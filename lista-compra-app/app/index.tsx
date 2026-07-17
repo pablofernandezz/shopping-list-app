@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';  
 import io from 'socket.io-client';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { styles } from '../utils/styles';
 import { obtenerIcono, DICCIONARIO_EMOJIS } from '../utils/diccionario';
 
@@ -31,6 +32,7 @@ interface Articulo {
 }
 
 export default function App() {
+  // --- ESTADOS DE DATOS ---
   const [nombre, setNombre] = useState('');
   const [sugerencias, setSugerencias] = useState<string[]>([]); 
   const [cantidad, setCantidad] = useState<number>(1);
@@ -41,6 +43,11 @@ export default function App() {
   const [refrescando, setRefrescando] = useState(false);
   const [cargandoInicial, setCargandoInicial] = useState(true);
 
+  // --- ESTADOS DE SEGURIDAD ---
+  const [claveAcceso, setClaveAcceso] = useState('');
+  const [claveGuardada, setClaveGuardada] = useState<string | null>(null);
+  const [verificandoAcceso, setVerificandoAcceso] = useState(true);
+
   // --- HELPER DE ALERTAS MULTIPLATAFORMA ---
   const mostrarAlerta = (titulo: string, mensaje: string) => {
     if (Platform.OS === 'web') {
@@ -50,48 +57,80 @@ export default function App() {
     }
   };
 
-  // --- LOGICA DE RED (CONEXION AL BACKEND) ---
-
-  // 1 cargar datos al iniciar la app y conectar WebSockets
+  // --- ARRANQUE Y WEBSOCKETS ---
   useEffect(() => {
-    recargarDatos().finally(() => {
+    const arrancarApp = async () => {
+      // 1. Comprobar si ya hay una clave guardada en el dispositivo
+      const clave = await AsyncStorage.getItem('api_key_familia');
+      if (clave) {
+        setClaveGuardada(clave);
+        await recargarDatos(clave); 
+      }
+      setVerificandoAcceso(false);
       setCargandoInicial(false);
-    });
+    };
 
-    // Conectar al servidor Socket.io
+    arrancarApp();
+
+    // 2. Conectar WebSockets
     const socket = io(API_URL);
-
-    // Escuchar el evento emitido por el backend
     socket.on('actualizacionLista', () => {
-      recargarDatos(); // Pide la lista fresca a MongoDB silenciosamente
+      // Usamos un callback para tener siempre el valor más reciente de la clave
+      setClaveGuardada((claveActual) => {
+        if (claveActual) recargarDatos(claveActual);
+        return claveActual;
+      });
     });
 
-    // Limpiar la conexión si el componente se desmonta para liberar memoria
     return () => {
       socket.disconnect();
     };
   }, []);
 
-  // Función GET: Obtener todos los artículos
-  const recargarDatos = async () => {
+  // --- LOGICA DE AUTENTICACIÓN ---
+  const iniciarSesion = async () => {
+    if (claveAcceso.trim() === '') return;
+    await AsyncStorage.setItem('api_key_familia', claveAcceso);
+    setClaveGuardada(claveAcceso);
+    recargarDatos(claveAcceso);
+  };
+
+  const cerrarSesion = async () => {
+    await AsyncStorage.removeItem('api_key_familia');
+    setClaveGuardada(null);
+    setClaveAcceso('');
+    setLista([]);
+  };
+
+  // --- LOGICA DE RED (Peticiones al Backend) ---
+  const recargarDatos = async (claveActual = claveGuardada) => {
+    if (!claveActual) return;
     setRefrescando(true); 
     try {
-      const respuesta = await fetch(`${API_URL}/articulos`);
+      const respuesta = await fetch(`${API_URL}/articulos`, {
+        headers: { 'x-api-key': claveActual }
+      });
+
+      if (respuesta.status === 401) {
+        mostrarAlerta("Acceso denegado", "La contraseña es incorrecta o ha cambiado.");
+        cerrarSesion();
+        return;
+      }
+
       const datosBBDD = await respuesta.json();
       setLista(datosBBDD); 
     } catch (error) {
-      mostrarAlerta("Error de conexión", "Asegúrate de que el servidor Node.js está encendido y conectado a la misma Wi-Fi.");
+      mostrarAlerta("Error de conexión", "Asegúrate de que tienes internet.");
     } finally {
       setRefrescando(false);
     }
   };
 
-  // Funciones POST y PUT: Añadir o Editar
   const agregarOActualizarArticulo = async () => {
     const nombreLimpio = nombre.trim();
-    if (nombreLimpio === '') return; 
+    if (nombreLimpio === '' || !claveGuardada) return; 
 
-    // VALIDACIÓN DE DUPLICADOS
+    // Validación de duplicados en Frontend
     const articuloDuplicado = lista.find(
       (item) => item.nombre.toLowerCase() === nombreLimpio.toLowerCase()
     );
@@ -109,7 +148,10 @@ export default function App() {
         // PUT: Actualizar
         const respuesta = await fetch(`${API_URL}/articulos/${editandoArticulo.nombre}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-api-key': claveGuardada
+          },
           body: JSON.stringify({ 
             nombre: nombreLimpio, 
             cantidad, 
@@ -139,7 +181,10 @@ export default function App() {
         // POST: Añadir
         const respuesta = await fetch(`${API_URL}/articulos`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-api-key': claveGuardada 
+          },
           body: JSON.stringify({ nombre: nombreLimpio, cantidad, comentario })
         });
 
@@ -163,12 +208,14 @@ export default function App() {
     }
   };
 
-  // Función DELETE: Borrar un artículo
   const confirmarEliminacion = (articulo: Articulo) => {
+    if (!claveGuardada) return;
+
     const borrarDeBD = async () => {
       try {
         const respuesta = await fetch(`${API_URL}/articulos/${articulo.nombre}`, {
-          method: 'DELETE'
+          method: 'DELETE',
+          headers: { 'x-api-key': claveGuardada }
         });
         if (respuesta.ok) recargarDatos();
       } catch (error) {
@@ -191,13 +238,17 @@ export default function App() {
     }
   };
 
-  // Función para vaciar toda la lista iterando
   const vaciarLista = async () => {
+    if (!claveGuardada) return;
+
     const ejecutarVaciado = async () => {
       setRefrescando(true);
       try {
         for (const item of lista) {
-          await fetch(`${API_URL}/articulos/${item.nombre}`, { method: 'DELETE' });
+          await fetch(`${API_URL}/articulos/${item.nombre}`, { 
+            method: 'DELETE',
+            headers: { 'x-api-key': claveGuardada }
+          });
         }
         recargarDatos();
       } catch (error) {
@@ -259,13 +310,50 @@ export default function App() {
     </View>
   );
 
+  // --- RENDERIZADO CONDICIONAL ---
+  if (verificandoAcceso) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F3F4F6' }}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+      </View>
+    );
+  }
+
+  // PANTALLA DE ACCESO (Si no hay clave)
+  if (!claveGuardada) {
+    return (
+      <KeyboardAvoidingView style={[styles.container, { justifyContent: 'center', padding: 20 }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={styles.formulario}>
+          <Text style={styles.titulo}>🔒 Acceso Familiar</Text>
+          <TextInput
+            style={[styles.inputPrincipal, { textAlign: 'center', marginBottom: 20 }]}
+            placeholder="Introduce la contraseña"
+            placeholderTextColor="#6B7280"
+            secureTextEntry
+            value={claveAcceso}
+            onChangeText={setClaveAcceso}
+          />
+          <TouchableOpacity style={styles.botonAnadir} onPress={iniciarSesion}>
+            <Text style={styles.textoBotonAnadir}>Entrar</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  // PANTALLA PRINCIPAL DE LA APLICACIÓN
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <KeyboardAvoidingView 
         style={styles.container} 
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Text style={styles.titulo}>📝 Lista de la Compra 🛒</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative', marginBottom: 20 }}>
+          <Text style={[styles.titulo, { marginBottom: 0 }]}>📝 Lista de la Compra 🛒</Text>
+          <TouchableOpacity onPress={cerrarSesion} style={{ position: 'absolute', right: 20 }}>
+            <Text style={{ fontSize: 20 }}>🔓</Text>
+          </TouchableOpacity>
+        </View>
 
         {cargandoInicial ? (
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -339,7 +427,7 @@ export default function App() {
               refreshControl={
                 <RefreshControl  
                   refreshing={refrescando} 
-                  onRefresh={recargarDatos} 
+                  onRefresh={() => recargarDatos()} 
                   colors={['#3B82F6']} 
                   tintColor="#3B82F6" 
                 />

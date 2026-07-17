@@ -20,6 +20,23 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
+// --- MIDDLEWARE DE SEGURIDAD ---
+const verificarApiKey = (req, res, next) => {
+    // Leer la cabecera que nos enviara la web
+    const apiKeyUsuario = req.headers['x-api-key'];
+    
+    // Comprobar si coincide con la variable de entorno de Render
+    if (!apiKeyUsuario || apiKeyUsuario !== process.env.API_KEY) {
+        return res.status(401).json({ error: "Acceso denegado. Contraseña incorrecta." });
+    }
+    
+    // Si la contraseña es correcta, le dejamos pasar
+    next();
+};
+
+// Aplicar el portero a todas las rutas que vengan a partir de aquí
+app.use(verificarApiKey);
+
 // 1 conectar cn  la base de datos
 const uri = process.env.MONGO_URI;
 
