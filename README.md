@@ -43,7 +43,7 @@ cd backend
 npm install
 ```
 
-Crea un archivo `.env` en el directorio `backend` y añade tu cadena de conexión a MongoDB:
+Crea un archivo `.env` en el directorio `backend` y añade tu propia cadena de conexión a MongoDB (necesitarás registrarte en MongoDB Atlas para obtener tu propio clúster gratuito):
 ```env
 MONGO_URI=mongodb+srv://<usuario>:<password>@cluster0...
 ```
@@ -61,9 +61,9 @@ cd lista-compra-app
 npm install
 ```
 
-En el archivo `app/index.tsx`, asegúrate de que la variable `API_URL` apunta a tu servidor local (o a tu servidor de producción si ya está desplegado):
+**Importante:** En el archivo `app/index.tsx`, debes sustituir la variable `API_URL` para que apunte a tu propia infraestructura. Borra la URL de demostración que viene por defecto y añade tu IP local o tu servidor de producción:
 ```typescript
-const API_URL = 'http://TU_IP_LOCAL:3000'; // Entorno de desarrollo
+const API_URL = 'http://TU_IP_LOCAL:3000'; // Entorno de desarrollo o tu propia URL de producción
 ```
 
 Inicia la aplicación con Expo:

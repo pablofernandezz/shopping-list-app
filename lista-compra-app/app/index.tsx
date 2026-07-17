@@ -8,16 +8,14 @@ import {
   KeyboardAvoidingView, 
   Platform,
   Alert,
-  RefreshControl
+  RefreshControl,
+  ActivityIndicator
 } from 'react-native';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler'; 
-import { styles } from './styles';
-import { DICCIONARIO_EMOJIS, obtenerIcono } from './diccionario'; 
+import { styles } from '../utils/styles';
+import { obtenerIcono, DICCIONARIO_EMOJIS } from '../utils/diccionario';
 
 // --- CONFIGURACION DE RED ---
-// para local, uso mi IP
-// const API_URL = 'http://192.168.1.41:3000';
-
 // URL pública
 const API_URL = 'https://shopping-list-app-zm4g.onrender.com';
 
@@ -40,13 +38,17 @@ export default function App() {
   // Guardar el articulo completo que se esta editando para tener su nombre original
   const [editandoArticulo, setEditandoArticulo] = useState<Articulo | null>(null);
   const [refrescando, setRefrescando] = useState(false);
-
+  
+  // Estado para la carga inicial (cold start del servidor)
+  const [cargandoInicial, setCargandoInicial] = useState(true);
 
   // --- LOGICA DE RED (CONEXION AL BACKEND) ---
 
   // 1 cargar datos al iniciar la app
   useEffect(() => {
-    recargarDatos();
+    recargarDatos().finally(() => {
+      setCargandoInicial(false);
+    });
   }, []);
 
   // Función GET: Obtener todos los artículos
@@ -65,7 +67,23 @@ export default function App() {
 
   // Funciones POST y PUT: Añadir o Editar
   const agregarOActualizarArticulo = async () => {
-    if (nombre.trim() === '') return; 
+    const nombreLimpio = nombre.trim();
+    if (nombreLimpio === '') return; 
+
+    //VALIDACIÓN DE DUPLICADOS
+    // Buscamos si ya existe un artículo con el mismo nombre (ignorando mayus y minus)
+    const articuloDuplicado = lista.find(
+      (item) => item.nombre.toLowerCase() === nombreLimpio.toLowerCase()
+    );
+
+    // si hay un duplicado, Y NO estamos editando ese mismo artículo en este momento:
+    if (articuloDuplicado && (!editandoArticulo || editandoArticulo.nombre.toLowerCase() !== nombreLimpio.toLowerCase())) {
+      Alert.alert(
+        "Artículo repetido 🚫",
+        `"${nombreLimpio}" ya está en tu lista. Utiliza el botón del lápiz (✏️) en el artículo existente para cambiar su cantidad o añadir un comentario.`
+      );
+      return; // detener la ejecución aquí para que no haga el POST
+    }
 
     try {
       if (editandoArticulo) {
@@ -73,7 +91,7 @@ export default function App() {
         const respuesta = await fetch(`${API_URL}/articulos/${editandoArticulo.nombre}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nombre, cantidad, comentario })
+          body: JSON.stringify({ nombre: nombreLimpio, cantidad, comentario })
         });
         
         if (respuesta.ok) {
@@ -85,7 +103,7 @@ export default function App() {
         const respuesta = await fetch(`${API_URL}/articulos`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nombre, cantidad, comentario })
+          body: JSON.stringify({ nombre: nombreLimpio, cantidad, comentario })
         });
 
         if (respuesta.ok) {
@@ -115,7 +133,7 @@ export default function App() {
           style: "destructive", 
           onPress: async () => {
             try {
-              //  la petición DELETE se hace a la ruta del backend
+              // la petición DELETE se hace a la ruta del backend
               const respuesta = await fetch(`${API_URL}/articulos/${articulo.nombre}`, {
                 method: 'DELETE'
               });
@@ -201,112 +219,121 @@ export default function App() {
         style={styles.container} 
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Text style={styles.titulo}>Lista de la Compra</Text>
+        <Text style={styles.titulo}>📝 Lista de la Compra 🛒</Text>
 
-        <View style={styles.formulario}>
-          <View style={{ zIndex: 2 }}> 
-            <TextInput
-              style={styles.inputPrincipal}
-              placeholder="¿Qué necesitas? (Ej. Manzanas)"
-              placeholderTextColor="#6B7280" 
-              value={nombre}
-              onChangeText={manejarTextoNombre} 
-            />
-            
-            {sugerencias.length > 0 && (
-              <View style={styles.cajaSugerencias}>
-                {sugerencias.map((sug) => (
-                  <TouchableOpacity 
-                    key={sug} 
-                    style={styles.itemSugerencia}
-                    onPress={() => seleccionarSugerencia(sug)}
-                  >
-                    <Text style={styles.textoSugerencia}>
-                      {DICCIONARIO_EMOJIS[sug]} {sug.charAt(0).toUpperCase() + sug.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
+        {cargandoInicial ? (
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="large" color="#3B82F6" />
+            <Text style={{ marginTop: 10, color: '#6B7280' }}>Conectando con el servidor...</Text>
           </View>
-          
-          <View style={[styles.filaInputs, { zIndex: 1 }]}>
-            <View style={styles.stepperContainer}>
-              <TouchableOpacity onPress={decrementarCantidad} style={styles.stepperBoton}>
-                <Text style={styles.stepperTextoBoton}>-</Text>
-              </TouchableOpacity>
-              <Text style={styles.stepperValor}>{cantidad}</Text>
-              <TouchableOpacity onPress={incrementarCantidad} style={styles.stepperBoton}>
-                <Text style={styles.stepperTextoBoton}>+</Text>
+        ) : (
+          <>
+            <View style={styles.formulario}>
+              <View style={{ zIndex: 2 }}> 
+                <TextInput
+                  style={styles.inputPrincipal}
+                  placeholder="¿Qué necesitas? (Ej. Manzanas)"
+                  placeholderTextColor="#6B7280" 
+                  value={nombre}
+                  onChangeText={manejarTextoNombre} 
+                />
+                
+                {sugerencias.length > 0 && (
+                  <View style={styles.cajaSugerencias}>
+                    {sugerencias.map((sug) => (
+                      <TouchableOpacity 
+                        key={sug} 
+                        style={styles.itemSugerencia}
+                        onPress={() => seleccionarSugerencia(sug)}
+                      >
+                        <Text style={styles.textoSugerencia}>
+                          {DICCIONARIO_EMOJIS[sug]} {sug.charAt(0).toUpperCase() + sug.slice(1)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+              
+              <View style={[styles.filaInputs, { zIndex: 1 }]}>
+                <View style={styles.stepperContainer}>
+                  <TouchableOpacity onPress={decrementarCantidad} style={styles.stepperBoton}>
+                    <Text style={styles.stepperTextoBoton}>-</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.stepperValor}>{cantidad}</Text>
+                  <TouchableOpacity onPress={incrementarCantidad} style={styles.stepperBoton}>
+                    <Text style={styles.stepperTextoBoton}>+</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TextInput
+                  style={styles.inputComentario}
+                  placeholder="Comentario (opcional)..."
+                  placeholderTextColor="#6B7280" 
+                  value={comentario}
+                  onChangeText={setComentario}
+                />
+              </View>
+
+              <TouchableOpacity 
+                style={[styles.botonAnadir, editandoArticulo && styles.botonGuardarEdicion]} 
+                onPress={agregarOActualizarArticulo}
+              >
+                <Text style={styles.textoBotonAnadir}>
+                  {editandoArticulo ? 'Guardar cambios' : 'Añadir a la lista'}
+                </Text>
               </TouchableOpacity>
             </View>
 
-            <TextInput
-              style={styles.inputComentario}
-              placeholder="Comentario (opcional)..."
-              placeholderTextColor="#6B7280" 
-              value={comentario}
-              onChangeText={setComentario}
+            <FlatList
+              style={styles.lista}
+              contentContainerStyle={{ flexGrow: 1 }} 
+              data={lista} 
+              keyExtractor={(item) => item._id || item.nombre} 
+              refreshControl={
+                <RefreshControl 
+                  refreshing={refrescando} 
+                  onRefresh={recargarDatos} 
+                  colors={['#3B82F6']} 
+                  tintColor="#3B82F6" 
+                />
+              }
+              renderItem={({ item }) => (
+                <Swipeable 
+                  renderRightActions={renderFondoRojoSwipe}
+                  onSwipeableOpen={(direction) => {
+                    if (direction === 'right') confirmarEliminacion(item);
+                  }}
+                >
+                  <View style={styles.tarjetaArticulo}>
+                    <View style={styles.infoArticulo}>
+                      <Text style={styles.nombreArticulo}>
+                        {obtenerIcono(item.nombre)} {item.nombre} (x{item.cantidad})
+                      </Text>
+                      {item.comentario !== '' && item.comentario !== undefined && (
+                        <Text style={styles.comentarioArticulo}>{item.comentario}</Text>
+                      )}
+                    </View>
+
+                    <View style={styles.accionesArticulo}>
+                      <TouchableOpacity onPress={() => iniciarEdicion(item)} style={styles.botonAccion}>
+                        <Text style={styles.textoEditar}>✏️</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => confirmarEliminacion(item)} style={styles.botonAccion}>
+                        <Text style={styles.textoEliminar}>❌</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </Swipeable>
+              )}
             />
-          </View>
 
-          <TouchableOpacity 
-            style={[styles.botonAnadir, editandoArticulo && styles.botonGuardarEdicion]} 
-            onPress={agregarOActualizarArticulo}
-          >
-            <Text style={styles.textoBotonAnadir}>
-              {editandoArticulo ? 'Guardar cambios' : 'Añadir a la lista'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <FlatList
-          style={styles.lista}
-          contentContainerStyle={{ flexGrow: 1 }} 
-          data={lista} 
-          keyExtractor={(item) => item._id || item.nombre} // Usamos el _id de Mongo
-          refreshControl={
-            <RefreshControl 
-              refreshing={refrescando} 
-              onRefresh={recargarDatos} 
-              colors={['#3B82F6']} 
-              tintColor="#3B82F6" 
-            />
-          }
-          renderItem={({ item }) => (
-            <Swipeable 
-              renderRightActions={renderFondoRojoSwipe}
-              onSwipeableOpen={(direction) => {
-                if (direction === 'right') confirmarEliminacion(item);
-              }}
-            >
-              <View style={styles.tarjetaArticulo}>
-                <View style={styles.infoArticulo}>
-                  <Text style={styles.nombreArticulo}>
-                    {obtenerIcono(item.nombre)} {item.nombre} (x{item.cantidad})
-                  </Text>
-                  {item.comentario !== '' && item.comentario !== undefined && (
-                    <Text style={styles.comentarioArticulo}>{item.comentario}</Text>
-                  )}
-                </View>
-
-                <View style={styles.accionesArticulo}>
-                  <TouchableOpacity onPress={() => iniciarEdicion(item)} style={styles.botonAccion}>
-                    <Text style={styles.textoEditar}>✏️</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => confirmarEliminacion(item)} style={styles.botonAccion}>
-                    <Text style={styles.textoEliminar}>❌</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </Swipeable>
-          )}
-        />
-
-        {lista.length > 0 && (
-          <TouchableOpacity style={styles.botonVaciar} onPress={vaciarLista}>
-            <Text style={styles.textoBotonVaciar}>Compra Hecha (Vaciar lista)</Text>
-          </TouchableOpacity>
+            {lista.length > 0 && (
+              <TouchableOpacity style={styles.botonVaciar} onPress={vaciarLista}>
+                <Text style={styles.textoBotonVaciar}>Compra Hecha (Vaciar lista)</Text>
+              </TouchableOpacity>
+            )}
+          </>
         )}
       </KeyboardAvoidingView>
     </GestureHandlerRootView>
