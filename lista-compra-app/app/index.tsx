@@ -41,6 +41,15 @@ export default function App() {
   const [refrescando, setRefrescando] = useState(false);
   const [cargandoInicial, setCargandoInicial] = useState(true);
 
+  // --- HELPER DE ALERTAS MULTIPLATAFORMA ---
+  const mostrarAlerta = (titulo: string, mensaje: string) => {
+    if (Platform.OS === 'web') {
+      window.alert(`${titulo}\n\n${mensaje}`);
+    } else {
+      Alert.alert(titulo, mensaje);
+    }
+  };
+
   // --- LOGICA DE RED (CONEXION AL BACKEND) ---
 
   // 1 cargar datos al iniciar la app y conectar WebSockets
@@ -49,15 +58,15 @@ export default function App() {
       setCargandoInicial(false);
     });
 
-    // conectar al servidor Socket.io
+    // Conectar al servidor Socket.io
     const socket = io(API_URL);
 
-    // escuchar el evento emitido por el backend
+    // Escuchar el evento emitido por el backend
     socket.on('actualizacionLista', () => {
-      recargarDatos(); // Pide la lista fresca a MongoDB
+      recargarDatos(); // Pide la lista fresca a MongoDB silenciosamente
     });
 
-    // limpiar la conexión si el componente se desmonta para liberar memoria
+    // Limpiar la conexión si el componente se desmonta para liberar memoria
     return () => {
       socket.disconnect();
     };
@@ -71,7 +80,7 @@ export default function App() {
       const datosBBDD = await respuesta.json();
       setLista(datosBBDD); 
     } catch (error) {
-      Alert.alert("Error de conexión", "Asegúrate de que el servidor Node.js está encendido y conectado a la misma Wi-Fi.");
+      mostrarAlerta("Error de conexión", "Asegúrate de que el servidor Node.js está encendido y conectado a la misma Wi-Fi.");
     } finally {
       setRefrescando(false);
     }
@@ -88,7 +97,7 @@ export default function App() {
     );
 
     if (articuloDuplicado && (!editandoArticulo || editandoArticulo.nombre.toLowerCase() !== nombreLimpio.toLowerCase())) {
-      Alert.alert(
+      mostrarAlerta(
         "Artículo repetido 🚫",
         `"${nombreLimpio}" ya está en tu lista. Utiliza el botón del lápiz (✏️) en el artículo existente para cambiar su cantidad o añadir un comentario.`
       );
@@ -110,7 +119,7 @@ export default function App() {
         });
         
         if (respuesta.status === 409) {
-          Alert.alert(
+          mostrarAlerta(
             "¡Cuidado! Colisión detectada ⚠️", 
             "Alguien más acaba de modificar este artículo. La lista se actualizará para que veas los nuevos cambios."
           );
@@ -135,7 +144,7 @@ export default function App() {
         });
 
         if (respuesta.status === 409) {
-          Alert.alert("Ya existe", "Otro dispositivo acaba de añadir ese artículo.");
+          mostrarAlerta("Ya existe", "Otro dispositivo acaba de añadir ese artículo.");
           recargarDatos();
           return;
         }
@@ -150,59 +159,65 @@ export default function App() {
       setComentario('');
       setSugerencias([]); 
     } catch (error) {
-      Alert.alert("Error", "Hubo un problema al guardar el artículo en la base de datos.");
+      mostrarAlerta("Error", "Hubo un problema al guardar el artículo en la base de datos.");
     }
   };
 
   // Función DELETE: Borrar un artículo
   const confirmarEliminacion = (articulo: Articulo) => {
-    Alert.alert(
-      "Eliminar artículo", 
-      `¿Seguro que quieres eliminar ${articulo.nombre} de la lista?`, 
-      [
-        { text: "Cancelar", style: "cancel" }, 
-        { 
-          text: "Eliminar", 
-          style: "destructive", 
-          onPress: async () => {
-            try {
-              const respuesta = await fetch(`${API_URL}/articulos/${articulo.nombre}`, {
-                method: 'DELETE'
-              });
-              if (respuesta.ok) recargarDatos();
-            } catch (error) {
-              Alert.alert("Error", "No se pudo conectar con el servidor para borrar.");
-            }
-          } 
-        }
-      ]
-    );
+    const borrarDeBD = async () => {
+      try {
+        const respuesta = await fetch(`${API_URL}/articulos/${articulo.nombre}`, {
+          method: 'DELETE'
+        });
+        if (respuesta.ok) recargarDatos();
+      } catch (error) {
+        mostrarAlerta("Error", "No se pudo conectar con el servidor para borrar.");
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmado = window.confirm(`¿Seguro que quieres eliminar ${articulo.nombre} de la lista?`);
+      if (confirmado) borrarDeBD();
+    } else {
+      Alert.alert(
+        "Eliminar artículo", 
+        `¿Seguro que quieres eliminar ${articulo.nombre} de la lista?`, 
+        [
+          { text: "Cancelar", style: "cancel" }, 
+          { text: "Eliminar", style: "destructive", onPress: borrarDeBD }
+        ]
+      );
+    }
   };
 
   // Función para vaciar toda la lista iterando
   const vaciarLista = async () => {
-    Alert.alert(
-      "Vaciar Lista",
-      "¿Seguro que has comprado todo y quieres limpiar la base de datos?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Vaciar",
-          style: "destructive",
-          onPress: async () => {
-            setRefrescando(true);
-            try {
-              for (const item of lista) {
-                await fetch(`${API_URL}/articulos/${item.nombre}`, { method: 'DELETE' });
-              }
-              recargarDatos();
-            } catch (error) {
-              Alert.alert("Error", "Falló el vaciado de la base de datos.");
-            }
-          }
+    const ejecutarVaciado = async () => {
+      setRefrescando(true);
+      try {
+        for (const item of lista) {
+          await fetch(`${API_URL}/articulos/${item.nombre}`, { method: 'DELETE' });
         }
-      ]
-    );
+        recargarDatos();
+      } catch (error) {
+        mostrarAlerta("Error", "Falló el vaciado de la base de datos.");
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmado = window.confirm("¿Seguro que has comprado todo y quieres limpiar la base de datos?");
+      if (confirmado) ejecutarVaciado();
+    } else {
+      Alert.alert(
+        "Vaciar Lista",
+        "¿Seguro que has comprado todo y quieres limpiar la base de datos?",
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Vaciar", style: "destructive", onPress: ejecutarVaciado }
+        ]
+      );
+    }
   };
 
   // --- LÓGICA DE AUTOCOMPLETADO Y UI ---

@@ -38,6 +38,13 @@ const articuloSchema = new mongoose.Schema({
 // articulo se crea a partir del esquema de arriba
 const Articulo = mongoose.model('Articulo', articuloSchema);
 
+
+// funcion para normalizar nombres: quitar espacios y poner la primera letra en mayúscula
+const normalizarNombre = (nombre) => {
+    const n = nombre.trim();
+    return n.charAt(0).toUpperCase() + n.slice(1).toLowerCase();
+};
+
 // GET: leer todos los ariculos
 app.get('/articulos', async (req, res) => {
     try {
@@ -52,18 +59,15 @@ app.get('/articulos', async (req, res) => {
 // POST: añadir un nuevo articulo
 app.post('/articulos', async (req, res) => {
     try {
-        // 1 creear el objeto usando el Molde (Schema) de antes
+        // normalizar el nombre antes de guardarlo en la base de datos
+        req.body.nombre = normalizarNombre(req.body.nombre);
+        
         const nuevoArticulo = new Articulo(req.body);
-
-        // 2 guardar en MongoDB (await porque tarda un poco)
         await nuevoArticulo.save();
         
-        // <-- AVISO WEB-SOCKET -->
         io.emit('actualizacionLista');
-
         res.status(201).json({ mensaje: "Artículo añadido a MongoDB", articulo: nuevoArticulo });
     } catch (error) {
-        // código 11000 = violación de índice único (dos dispositivos añadiendo el mismo nombre a la vez)
         if (error.code === 11000) {
             return res.status(409).json({ error: "Ya existe un artículo con ese nombre." });
         }
@@ -86,7 +90,9 @@ app.put('/articulos/:nombre', async (req, res) => {
         }
 
         // actualizacion de datos
-        if (req.body.nombre !== undefined) articulo.nombre = req.body.nombre;
+        if (req.body.nombre !== undefined) {
+            articulo.nombre = normalizarNombre(req.body.nombre);
+        }
         articulo.cantidad = req.body.cantidad;
         articulo.comentario = req.body.comentario;
 

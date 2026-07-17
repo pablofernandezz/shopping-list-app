@@ -23,8 +23,13 @@
       "package": "com.pablofdeezz.listacompraapp"
     },
     "web": {
+      "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "shortName": "Compra",
+      "themeColor": "#3B82F6",
+      "backgroundColor": "#F3F4F6",
+      "display": "standalone"
     },
     "plugins": [
       "expo-router",
