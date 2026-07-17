@@ -16,7 +16,10 @@ import { DICCIONARIO_EMOJIS, obtenerIcono } from './diccionario';
 
 // --- CONFIGURACION DE RED ---
 // para local, uso mi IP
-const API_URL = 'http://192.168.1.44:3000';
+// const API_URL = 'http://192.168.1.41:3000';
+
+// URL pública
+const API_URL = 'https://shopping-list-app-zm4g.onrender.com';
 
 // --- INTERFAZ ---
 interface Articulo {
