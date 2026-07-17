@@ -22,6 +22,7 @@ const API_URL = 'https://shopping-list-app-zm4g.onrender.com';
 // --- INTERFAZ ---
 interface Articulo {
   _id?: string; // MongoDB usa _id automáticamente
+  __v?: number;
   nombre: string;
   cantidad: number;
   comentario: string;
@@ -91,20 +92,43 @@ export default function App() {
         const respuesta = await fetch(`${API_URL}/articulos/${editandoArticulo.nombre}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nombre: nombreLimpio, cantidad, comentario })
+          body: JSON.stringify({ 
+            nombre: nombreLimpio, 
+            cantidad, 
+            comentario,
+            __v: editandoArticulo.__v // enviar la version que hay al darle al lapiz
+          })
         });
         
+        if (respuesta.status === 409) {
+          Alert.alert(
+            "¡Cuidado! Colisión detectada ⚠️", 
+            "Alguien más acaba de modificar este artículo. La lista se actualizará para que veas los nuevos cambios."
+          );
+          recargarDatos(); // recargar para ver lo que ha puesto el otro usuario
+          setEditandoArticulo(null);
+          setNombre('');
+          setCantidad(1);
+          setComentario('');
+          return;
+        }
+
         if (respuesta.ok) {
-          recargarDatos(); // refrescar la lista para ver los cambios
+          recargarDatos(); 
           setEditandoArticulo(null); 
         }
       } else {
-        // POST: Añadir nuevo
         const respuesta = await fetch(`${API_URL}/articulos`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ nombre: nombreLimpio, cantidad, comentario })
         });
+
+        if (respuesta.status === 409) {
+          Alert.alert("Ya existe", "Otro dispositivo acaba de añadir ese artículo.");
+          recargarDatos();
+          return;
+        }
 
         if (respuesta.ok) {
           recargarDatos();

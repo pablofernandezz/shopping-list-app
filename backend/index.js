@@ -18,11 +18,11 @@ mongoose.connect(uri)
 
 // 2 definicion esquema y modelo
 const articuloSchema = new mongoose.Schema({
-  nombre: { type: String, required: true },
+  nombre: { type: String, required: true, unique: true }, // unique evita duplicados a nivel de BD
   cantidad: { type: Number, default: 1 },
   comprado: { type: Boolean, default: false },
   comentario: { type: String, default: "" }
-});
+}, { optimisticConcurrency: true });
 
 // articulo se crea a partir del esquema de arriba
 const Articulo = mongoose.model('Articulo', articuloSchema);
@@ -43,12 +43,16 @@ app.post('/articulos', async (req, res) => {
     try {
         // 1 creear el objeto usando el Molde (Schema) de antes
         const nuevoArticulo = new Articulo(req.body);
-        
+
         // 2 guardar en MongoDB (await porque tarda un poco)
         await nuevoArticulo.save();
-        
+
         res.status(201).json({ mensaje: "Artículo añadido a MongoDB", articulo: nuevoArticulo });
     } catch (error) {
+        // código 11000 = violación de índice único (dos dispositivos añadiendo el mismo nombre a la vez)
+        if (error.code === 11000) {
+            return res.status(409).json({ error: "Ya existe un artículo con ese nombre." });
+        }
         res.status(400).json({ error: "Error al guardar el artículo. Comprueba el formato." });
     }
 });
@@ -56,19 +60,36 @@ app.post('/articulos', async (req, res) => {
 // PUT: actualizar un articulo (buscando por nombre)
 app.put('/articulos/:nombre', async (req, res) => {
     try {
-        // findOneAndUpdate busca un documento y lo modifica en un solo paso
-        const articuloActualizado = await Articulo.findOneAndUpdate(
-            { nombre: req.params.nombre }, // 1 Condicion de busqueda
-            req.body,                      // 2 Los nuevos datos que vienen del movil/terminal
-            { new: true }                  // 3 Opcion para que devuelva el objeto ya modificado
-        );
+        const articulo = await Articulo.findOne({ nombre: req.params.nombre });
 
-        if (articuloActualizado) {
-            res.json({ mensaje: "Artículo actualizado", articulo: articuloActualizado });
-        } else {
-            res.status(404).json({ error: "Artículo no encontrado en la base de datos" });
+        if (!articulo) {
+            return res.status(404).json({ error: "Artículo no encontrado en la base de datos" });
         }
+
+        // el cliente envia una versión (__v) distinta a la que hay en la BD, algn lo modifico antes
+        if (req.body.__v !== undefined && articulo.__v !== req.body.__v) {
+            return res.status(409).json({ error: "Conflicto de versiones. El artículo fue modificado por otra persona." });
+        }
+
+        // actualizacion de datos
+        if (req.body.nombre !== undefined) articulo.nombre = req.body.nombre;
+        articulo.cantidad = req.body.cantidad;
+        articulo.comentario = req.body.comentario;
+
+        // hacer .save(), Mongoose incrementa el __v
+        await articulo.save();
+
+        res.json({ mensaje: "Artículo actualizado", articulo: articulo });
+
     } catch (error) {
+        // Mongoose lanza un VersionError si detecta colisión internamente
+        if (error.name === 'VersionError') {
+            return res.status(409).json({ error: "Conflicto de versiones. El artículo fue modificado por otra persona." });
+        }
+        // código 11000 = si el nuevo nombre ya lo tiene otro artículo
+        if (error.code === 11000) {
+            return res.status(409).json({ error: "Ya existe otro artículo con ese nombre." });
+        }
         res.status(500).json({ error: "Error interno al actualizar" });
     }
 });
