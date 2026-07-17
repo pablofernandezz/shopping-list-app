@@ -20,7 +20,7 @@ export const DICCIONARIO_EMOJIS: Record<string, string> = {
   "kiwis": "🥝",
   "tomates": "🍅",
   "aguacates": "🥑",
-  "coliflores": "🥦",
+  "brecol": "🥦",
   "pepinos": "🥒",
   "pimientos": "🫑",
   "zanahorias": "🥕",
@@ -32,6 +32,8 @@ export const DICCIONARIO_EMOJIS: Record<string, string> = {
   "croissants": "🥐",
   "pan de molde": "🍞",
   "barra de pan": "🥖",
+  "pan de barra": "🥖",
+  "baguette": "🥖",
   "queso": "🧀",
   "huevos": "🥚",
   "mantequilla": "🧈",
@@ -71,10 +73,19 @@ export const DICCIONARIO_EMOJIS: Record<string, string> = {
   "pilas": "🔋",
   "papel higienico": "🧻",
   "gel de ducha": "🧴",
+  "champu": "🧴",
   "jabon": "🧼",
   "pasta de dientes": "🪥",
   "cepillo de dientes": "🪥",
   "bombillas": "💡",
+  "pulpo": "🐙",
+  "calamares": "🦑",
+  "meigas": "🐟",
+  "sardinas": "🐟",
+  "bacalao": "🐟",
+  "salmon": "🐟",
+  "parrochitas": "🐟",
+  "agua": "💧"
 };
 
 export function obtenerIcono(texto: string): string {

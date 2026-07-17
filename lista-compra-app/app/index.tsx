@@ -18,6 +18,8 @@ import { styles } from '../utils/styles';
 import { obtenerIcono, DICCIONARIO_EMOJIS } from '../utils/diccionario';
 
 // --- CONFIGURACION DE RED ---
+//URL local para desarrollo
+//const API_URL = 'http://192.168.1.44:3000';
 // URL pública
 const API_URL = 'https://shopping-list-app-zm4g.onrender.com';
 
@@ -349,10 +351,7 @@ export default function App() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative', marginBottom: 20 }}>
-          <Text style={[styles.titulo, { marginBottom: 0 }]}>📝 Lista de la Compra 🛒</Text>
-          <TouchableOpacity onPress={cerrarSesion} style={{ position: 'absolute', right: 20 }}>
-            <Text style={{ fontSize: 20 }}>🔓</Text>
-          </TouchableOpacity>
+          <Text style={styles.titulo}>📝 Lista de la Compra 🛒</Text>
         </View>
 
         {cargandoInicial ? (
@@ -467,6 +466,10 @@ export default function App() {
                 <Text style={styles.textoBotonVaciar}>Compra Hecha (Vaciar lista)</Text>
               </TouchableOpacity>
             )}
+
+            <TouchableOpacity style={styles.botonCerrarSesion} onPress={cerrarSesion}>
+              <Text style={styles.textoBotonCerrarSesion}>🚪 Cerrar sesión</Text>
+            </TouchableOpacity>
           </>
         )}
       </KeyboardAvoidingView>

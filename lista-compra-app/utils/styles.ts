@@ -182,4 +182,19 @@ export const styles = StyleSheet.create({
     fontSize: 16,
     color: '#1F2937',
   },
+
+  // --- Estilos del botón Cerrar Sesión ---
+  botonCerrarSesion: {
+    backgroundColor: '#E5E7EB',
+    padding: 12,
+    alignItems: 'center',
+    marginHorizontal: 15,
+    marginBottom: 30,
+    borderRadius: 8,
+  },
+  textoBotonCerrarSesion: {
+    color: '#4B5563',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
 });
