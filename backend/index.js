@@ -2,9 +2,20 @@ require('dotenv').config(); //carga las variables del archivo .env
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const http = require('http'); // importar http nativo
+const { Server } = require('socket.io');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Crear el servidor HTTP y acoplar Socket.io
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*", // Permite conexiones desde movil y web
+    methods: ["GET", "POST", "PUT", "DELETE"]
+  }
+});
 
 app.use(cors());
 app.use(express.json());
@@ -46,6 +57,9 @@ app.post('/articulos', async (req, res) => {
 
         // 2 guardar en MongoDB (await porque tarda un poco)
         await nuevoArticulo.save();
+        
+        // <-- AVISO WEB-SOCKET -->
+        io.emit('actualizacionLista');
 
         res.status(201).json({ mensaje: "Artículo añadido a MongoDB", articulo: nuevoArticulo });
     } catch (error) {
@@ -78,6 +92,9 @@ app.put('/articulos/:nombre', async (req, res) => {
 
         // hacer .save(), Mongoose incrementa el __v
         await articulo.save();
+        
+        // <-- AVISO WEB-SOCKET -->
+        io.emit('actualizacionLista');
 
         res.json({ mensaje: "Artículo actualizado", articulo: articulo });
 
@@ -101,6 +118,8 @@ app.delete('/articulos/:nombre', async (req, res) => {
         const articuloBorrado = await Articulo.findOneAndDelete({ nombre: req.params.nombre });
 
         if (articuloBorrado) {
+            // <-- AVISO WEB-SOCKET -->
+            io.emit('actualizacionLista');
             res.json({ mensaje: `El artículo ${req.params.nombre} ha sido eliminado para siempre` });
         } else {
             res.status(404).json({ error: "Artículo no encontrado" });
@@ -110,8 +129,7 @@ app.delete('/articulos/:nombre', async (req, res) => {
     }
 });
 
-
 // Arrancar el servidor
-app.listen(PORT, () => {
-  console.log(`Servidor escuchando en http://localhost:${PORT}`);
+server.listen(PORT, () => {
+  console.log(`Servidor en tiempo real escuchando en http://localhost:${PORT}`);
 });

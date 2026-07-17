@@ -11,7 +11,8 @@ import {
   RefreshControl,
   ActivityIndicator
 } from 'react-native';
-import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler'; 
+import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';  
+import io from 'socket.io-client';
 import { styles } from '../utils/styles';
 import { obtenerIcono, DICCIONARIO_EMOJIS } from '../utils/diccionario';
 
@@ -21,7 +22,7 @@ const API_URL = 'https://shopping-list-app-zm4g.onrender.com';
 
 // --- INTERFAZ ---
 interface Articulo {
-  _id?: string; // MongoDB usa _id automáticamente
+  _id?: string;
   __v?: number;
   nombre: string;
   cantidad: number;
@@ -36,20 +37,30 @@ export default function App() {
   const [comentario, setComentario] = useState('');
   const [lista, setLista] = useState<Articulo[]>([]); 
   
-  // Guardar el articulo completo que se esta editando para tener su nombre original
   const [editandoArticulo, setEditandoArticulo] = useState<Articulo | null>(null);
   const [refrescando, setRefrescando] = useState(false);
-  
-  // Estado para la carga inicial (cold start del servidor)
   const [cargandoInicial, setCargandoInicial] = useState(true);
 
   // --- LOGICA DE RED (CONEXION AL BACKEND) ---
 
-  // 1 cargar datos al iniciar la app
+  // 1 cargar datos al iniciar la app y conectar WebSockets
   useEffect(() => {
     recargarDatos().finally(() => {
       setCargandoInicial(false);
     });
+
+    // conectar al servidor Socket.io
+    const socket = io(API_URL);
+
+    // escuchar el evento emitido por el backend
+    socket.on('actualizacionLista', () => {
+      recargarDatos(); // Pide la lista fresca a MongoDB
+    });
+
+    // limpiar la conexión si el componente se desmonta para liberar memoria
+    return () => {
+      socket.disconnect();
+    };
   }, []);
 
   // Función GET: Obtener todos los artículos
@@ -58,7 +69,7 @@ export default function App() {
     try {
       const respuesta = await fetch(`${API_URL}/articulos`);
       const datosBBDD = await respuesta.json();
-      setLista(datosBBDD); // Sustituimos el estado por lo que manda MongoDB
+      setLista(datosBBDD); 
     } catch (error) {
       Alert.alert("Error de conexión", "Asegúrate de que el servidor Node.js está encendido y conectado a la misma Wi-Fi.");
     } finally {
@@ -71,19 +82,17 @@ export default function App() {
     const nombreLimpio = nombre.trim();
     if (nombreLimpio === '') return; 
 
-    //VALIDACIÓN DE DUPLICADOS
-    // Buscamos si ya existe un artículo con el mismo nombre (ignorando mayus y minus)
+    // VALIDACIÓN DE DUPLICADOS
     const articuloDuplicado = lista.find(
       (item) => item.nombre.toLowerCase() === nombreLimpio.toLowerCase()
     );
 
-    // si hay un duplicado, Y NO estamos editando ese mismo artículo en este momento:
     if (articuloDuplicado && (!editandoArticulo || editandoArticulo.nombre.toLowerCase() !== nombreLimpio.toLowerCase())) {
       Alert.alert(
         "Artículo repetido 🚫",
         `"${nombreLimpio}" ya está en tu lista. Utiliza el botón del lápiz (✏️) en el artículo existente para cambiar su cantidad o añadir un comentario.`
       );
-      return; // detener la ejecución aquí para que no haga el POST
+      return; 
     }
 
     try {
@@ -96,7 +105,7 @@ export default function App() {
             nombre: nombreLimpio, 
             cantidad, 
             comentario,
-            __v: editandoArticulo.__v // enviar la version que hay al darle al lapiz
+            __v: editandoArticulo.__v 
           })
         });
         
@@ -105,7 +114,7 @@ export default function App() {
             "¡Cuidado! Colisión detectada ⚠️", 
             "Alguien más acaba de modificar este artículo. La lista se actualizará para que veas los nuevos cambios."
           );
-          recargarDatos(); // recargar para ver lo que ha puesto el otro usuario
+          recargarDatos(); 
           setEditandoArticulo(null);
           setNombre('');
           setCantidad(1);
@@ -118,6 +127,7 @@ export default function App() {
           setEditandoArticulo(null); 
         }
       } else {
+        // POST: Añadir
         const respuesta = await fetch(`${API_URL}/articulos`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -135,7 +145,6 @@ export default function App() {
         }
       }
 
-      // Limpiar los inputs
       setNombre('');
       setCantidad(1);
       setComentario('');
@@ -157,7 +166,6 @@ export default function App() {
           style: "destructive", 
           onPress: async () => {
             try {
-              // la petición DELETE se hace a la ruta del backend
               const respuesta = await fetch(`${API_URL}/articulos/${articulo.nombre}`, {
                 method: 'DELETE'
               });
@@ -184,7 +192,6 @@ export default function App() {
           onPress: async () => {
             setRefrescando(true);
             try {
-              // el backend actual requiere borrar por nombre uno a uno
               for (const item of lista) {
                 await fetch(`${API_URL}/articulos/${item.nombre}`, { method: 'DELETE' });
               }
@@ -315,7 +322,7 @@ export default function App() {
               data={lista} 
               keyExtractor={(item) => item._id || item.nombre} 
               refreshControl={
-                <RefreshControl 
+                <RefreshControl  
                   refreshing={refrescando} 
                   onRefresh={recargarDatos} 
                   colors={['#3B82F6']} 
